@@ -24,7 +24,7 @@ RUN cd ssdeep_psql && make
 RUN cd tlsh_pg/tlsh && ./make.sh && cd .. && mkdir build && cd build && cmake .. -DCMAKE_BUILD_TYPE=Release && make
 RUN ls -lah /malwaredb_pg
 
-FROM postgres:18-trixie@sha256:bfe50b2b0ddd9b55eadedd066fe24c7c6fe06626185b73358c480ea37868024d
+FROM postgres:17-trixie@sha256:0027bef26712baaee437a4ea48fdf3d2d2e2bc5f0d81615374408ca320f3c7e3
 RUN apt-get update && apt-get install -y libfuzzy2
 
 WORKDIR /malwaredb_pg
