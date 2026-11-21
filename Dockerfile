@@ -1,39 +1,34 @@
-FROM debian:trixie-slim@sha256:4bcb9db66237237d03b55b969271728dd3d955eaaa254b9db8a3db94550b1885 AS builder
-LABEL MAINTAINER="Richard Zak <richard@malwaredb.net>"
-LABEL org.opencontainers.image.authors=richard@malwaredb.net
-LABEL SOURCE="https://github.com/malwaredb/docker/"
-LABEL org.opencontainers.image.source=https://github.com/malwaredb/docker/
-LABEL org.opencontainers.image.description="Postgres 18 on Debian Trixie with similarity extensions installed intended for use with MalwareDB"
-LABEL org.opencontainers.image.licenses=Apache-2.0
+FROM rust:slim-trixie@sha256:6f14b2b4b278ec0d50aa1d69541c304ce0f95e0f6268487aa9924af1c2e9aebe AS builder
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install things we need for compilation
 RUN apt-get update && apt-get dist-upgrade -y
-RUN apt-get install -y postgresql-17 postgresql-server-dev-17 libfuzzy2 libfuzzy-dev cmake make build-essential git curl libssl-dev libssl3 libgomp1
-RUN apt-get install -y libboost-program-options-dev libboost-filesystem-dev libboost-system-dev libboost-program-options-dev
+RUN apt-get install -y postgresql-17 postgresql-server-dev-17 build-essential git clang llvm libclang-dev flex bison \
+    libxml2-dev libxslt-dev libssl-dev libxml2-utils xsltproc ccache pkg-config libicu-dev libreadline-dev zlib1g-dev
 
 # Download the components
 WORKDIR /malwaredb_pg
-RUN git clone https://github.com/malwaredb/LZJD.git
-RUN git clone https://github.com/malwaredb/ssdeep_psql.git
-RUN git clone --recursive https://github.com/malwaredb/tlsh_pg.git
+RUN git clone https://github.com/malwaredb/malwaredb-pg.git
+RUN cargo install cargo-pgrx --version 0.20.0 --locked
+RUN cargo pgrx init --pg17=`which pg_config`
 
-# Compile LZJD, SSDeep, TLSH plugins
-RUN cd LZJD/src/ && mkdir build && cd build && cmake .. -DCMAKE_BUILD_TYPE=Release && make
-RUN cd ssdeep_psql && make
-RUN cd tlsh_pg/tlsh && ./make.sh && cd .. && mkdir build && cd build && cmake .. -DCMAKE_BUILD_TYPE=Release && make
-RUN ls -lah /malwaredb_pg
+# Build the extension
+RUN cd malwaredb-pg && git checkout v0.0.1 && cargo pgrx package --features=pg17
 
-FROM postgres:17-trixie@sha256:0027bef26712baaee437a4ea48fdf3d2d2e2bc5f0d81615374408ca320f3c7e3
-RUN apt-get update && apt-get install -y libfuzzy2
+FROM postgres:17-trixie@sha256:223efeb196329b55b3b9a13db144956411dbc18e727e59f681c3e0aede6475cf
+LABEL MAINTAINER="Richard Zak <richard@malwaredb.net>"
+LABEL org.opencontainers.image.authors="richard@malwaredb.net"
+LABEL SOURCE="https://github.com/malwaredb/docker/"
+LABEL org.opencontainers.image.source="https://github.com/malwaredb/docker/"
+LABEL org.opencontainers.image.description="Postgres 17 on Debian Trixie with similarity extensions installed intended for use with MalwareDB"
+LABEL org.opencontainers.image.licenses=Apache-2.0
+ENV DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /malwaredb_pg
-COPY --from=builder /malwaredb_pg/LZJD/src/build/lzjd_psql.so /malwaredb_pg
-COPY --from=builder /malwaredb_pg/ssdeep_psql/ssdeep_psql.so /malwaredb_pg
-COPY --from=builder /malwaredb_pg/tlsh_pg/build/tlsh_psql.so /malwaredb_pg
-RUN ls -lah /malwaredb_pg && cp /malwaredb_pg/lzjd_psql.so /malwaredb_pg/ssdeep_psql.so /malwaredb_pg/tlsh_psql.so `pg_config --pkglibdir`
+COPY --from=builder /malwaredb_pg/malwaredb-pg/target/release/malwaredb_pg-pg17/postgresql-17-malwaredb-pg_0.0.1*.deb /malwaredb_pg
+RUN dpkg -i postgresql-17-malwaredb-pg_0.0.1*.deb
 
-VOLUME /var/lib/postgresql/18/data/
+VOLUME /var/lib/postgresql/17/data/
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 
 # For fast shutdown mode for Postgres
