@@ -1,0 +1,31 @@
+name: Clean up GHCR images
+
+# Run manually from the Actions tab. Defaults to a dry run so you can review
+# what would be deleted before doing it for real.
+on:
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Only log what would be deleted"
+        type: boolean
+        default: true
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      # Deletes untagged versions while keeping anything a tagged image
+      # (multi-arch children, cosign signatures) still references.
+      # https://github.com/dataaxiom/ghcr-cleanup-action
+      - name: Delete untagged images
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+        with:
+          owner: malwaredb
+          package: postgres
+          delete-untagged: true
+          # Old builds tagged "main" are no longer published
+          delete-tags: main
+          dry-run: ${{ inputs.dry-run }}
+          token: ${{ secrets.GITHUB_TOKEN }}
